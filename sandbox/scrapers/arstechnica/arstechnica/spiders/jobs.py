@@ -5,7 +5,7 @@ import os
 from time import time
 from time import sleep
 import json
-
+from scrapy.crawler import CrawlerProcess
 
 from kafka import KafkaProducer
 
@@ -29,7 +29,8 @@ producer = KafkaProducer(bootstrap_servers=KAFKA_SERVER,
 
 class JobsSpider(scrapy.Spider):
     name = "jobs"
-    V = set()
+    pages_V = set()
+    urls_V = set()
     allowed_domains = ["arstechnica.com"]
     start_urls = (
         'https://arstechnica.com/','http://arstechnica.com/'
@@ -39,7 +40,9 @@ class JobsSpider(scrapy.Spider):
 
         def process_url(response, url):
             absolute_url = response.urljoin(url)
-            producer.send("test", absolute_url)
+            if (absolute_url not in self.urls_V):
+                self.urls_V.add(absolute_url)
+            producer.send("arstechnica", absolute_url)
             sleep(0.5)
 
         url1s = response.xpath('//a[@class="overlay"]/@href').extract()
@@ -55,11 +58,19 @@ class JobsSpider(scrapy.Spider):
 
         for page in pages:
             absolute_page = response.urljoin(page)
-            if (absolute_page not in self.V):
-                self.V.add(absolute_page)
+            if (absolute_page not in self.pages_V):
+                self.pages_V.add(absolute_page)
                 yield Request(absolute_page , callback=self.parse)
 
 
 
 
+
+if __name__ == "__main__":
+    process = CrawlerProcess({
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'
+    })
+
+    process.crawl(JobsSpider)
+    process.start()
 
