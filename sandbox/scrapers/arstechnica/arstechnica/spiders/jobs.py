@@ -8,12 +8,12 @@ import json
 from scrapy.crawler import CrawlerProcess
 
 from kafka import KafkaProducer
+from itertools import chain
 
-
-def create_message():
+def create_message(title):
     msg = {
         "time": int(time() * 1000.0),
-        "msg": "Hello, World!"
+        "msg": title
     }
 
     return msg
@@ -38,32 +38,32 @@ class JobsSpider(scrapy.Spider):
 
     def parse(self, response):
 
-        def process_url(response, url):
-            absolute_url = response.urljoin(url)
-            if (absolute_url not in self.urls_V):
-                self.urls_V.add(absolute_url)
-            producer.send("arstechnica", absolute_url)
-            sleep(0.5)
 
         url1s = response.xpath('//a[@class="overlay"]/@href').extract()
         url2s = response.xpath('//h2/a/@href').extract()
 
         pages = response.xpath('//div[@class="prev-next-links"]/a/@href').extract()
 
-        for url in url1s:
-            process_url(response, url)
+        for url in chain(url1s, url2s):
+            if "/2016/" in url:
+                self.finished = True
+            absolute_url = response.urljoin(url)
+            if (absolute_url not in self.urls_V):
+                self.urls_V.add(absolute_url)
 
-        for url in url2s:
-            process_url(response, url)
-
+                yield Request(absolute_url, callback=self.parse_page,
+                              meta={'URL': absolute_url})
         for page in pages:
             absolute_page = response.urljoin(page)
             if (absolute_page not in self.pages_V):
                 self.pages_V.add(absolute_page)
                 yield Request(absolute_page , callback=self.parse)
 
-
-
+    def parse_page(self, response):
+        url = response.meta.get('URL')
+        article_title = response.xpath('//h1[@itemprop="headline"]/text()').extract_first()
+        message = create_message(article_title)
+        producer.send("test", message)
 
 
 if __name__ == "__main__":
